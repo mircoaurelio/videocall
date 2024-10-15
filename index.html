@@ -1,0 +1,968 @@
+<!-- 
+This is a peer-to-peer (P2P) chat application that allows users to communicate directly with each other without the need for a central server. the application is not using a singnaling server because the link is shared via the URL. The application is built using HTML, JavaScript, and the PeerJS library for WebRTC-based peer-to-peer connections. It is designed to be anonymous and serverless, with a focus on simplicity and ease of use.
+Features
+Peer-to-Peer Connection: Utilizes WebRTC via PeerJS to establish direct connections between users.
+2. Anonymous Chat: Users do not need to register or log in. Each session is unique and temporary.
+3. One-Shot Communication: Designed for quick, temporary conversations without persistent data storage.
+4. Responsive Design: Uses Bootstrap for a responsive and mobile-friendly interface.
+Sound Notifications: Plays sounds for sent and received messages to enhance user experience.
+Copyable Chat Link: Users can easily share a link to invite others to join the chat.
+Reconnect Feature: Allows users to attempt reconnection if the connection is lost.
+Debug Log: Displays a log of events for debugging purposes.
+User Interface
+Share Interface: Initial screen where users can copy the chat link and view debug logs.
+Chat Interface: Main chat area with message input, chat history, and advertisement space.
+Key Components
+PeerJS: Handles the creation and management of peer-to-peer connections.
+Bootstrap: Provides styling and layout for a responsive design.
+Emoji Picker: Allows users to insert emojis into their messages (though not fully integrated in the provided code).
+Workflow
+Initialization:
+A new Peer object is created.
+The user's peer ID is generated and displayed.
+The application checks URL parameters to determine if the user is initiating a new chat or joining an existing one.
+2. Connection Handling:
+If joining an existing chat, the application attempts to connect to the specified peer ID.
+If initiating a new chat, the user is prompted to share their link.
+Messaging:
+Users can send messages by typing in the input field and pressing "Send" or hitting "Enter".
+Messages are displayed in the chat area with different styles for sent and received messages.
+4. Connection Management:
+The application checks the connection status and attempts to reconnect if the connection is lost.
+A "Reconnect" button is available for manual reconnection attempts.
+5. Sound Notifications:
+Plays a sound when a message is sent or received.
+6. URL Management:
+The URL is updated with chat and peer IDs to facilitate easy sharing and reconnection.
+Technical Details
+HTML/CSS: Defines the structure and style of the application.
+JavaScript: Handles the logic for peer connections, message sending/receiving, and UI updates.
+PeerJS: Provides the underlying WebRTC functionality for peer-to-peer communication.
+Potential Improvements
+Emoji Integration: Fully integrate the emoji picker for enhanced messaging.
+Error Handling: Improve error handling for connection issues.
+Security: Consider adding encryption for message content to enhance privacy.
+This specification outlines the core functionality and design of the chat application, providing a clear understanding of its capabilities and workflow. -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Chat</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            background-color: #f0f2f5;
+        }
+        .chat-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #fff;
+        }
+        .btn-primary{
+            background-color: orange;
+        }
+        .chat-header {
+            background-color: #075e54;
+            color: white;
+            padding: 10px 15px;
+        }
+        #chatArea {
+            position: absolute;
+            bottom: 70px;
+            left: 10px;
+            width: calc(100% - 20px);
+            max-height: 150px;
+            overflow-y: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .message {
+            max-width: 80%;
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 7px;
+            position: relative;
+            word-wrap: break-word;
+        }
+        .message.friend {
+            background-color: #fff;
+            float: left;
+            clear: both;
+        }
+        .message.you {
+            background-color: #dcf8c6;
+            float: right;
+            clear: both;
+        }
+        .message.system {
+            background-color: #ffe6cc;
+            color: #856404;
+            text-align: center;
+            clear: both;
+            float: none;
+            margin-left: auto;
+            margin-right: auto;
+            max-width: 60%;
+            font-size: 0.9em;
+        }
+        .message-input {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: calc(100% - 20px);
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        #copyLinkBtn {
+            background-color: #128c7e;
+            border-color: #128c7e;
+        }
+        #copyStatus {
+            font-size: 0.8em;
+            color: #4caf50;
+        }
+        #adBox {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            text-align: center;
+            font-style: italic;
+        }
+        #videoCallContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        #videoWrapper {
+            width: 100%;
+            height: calc(100% - 60px);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        #remoteVideoWrapper {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        #messageInput {
+            border-radius: 19px;
+            border: 0;
+            margin-right: 60px;
+        }
+        .text-input {
+            border-radius: 19px;
+            border: 0;
+        }
+        .btn-round{
+            border-radius: 22px;
+        }
+        #localVideoWrapper {
+            position: absolute;
+            width: 30%;
+            max-width: 200px;
+            min-width: 100px;
+            aspect-ratio: 3/4;
+            bottom: 20px;
+            right: 20px;
+            border: 2px solid white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #remoteVideo, #localVideo {
+            width: 100%;
+            height: 100%;
+           
+            object-fit: cover;
+        }
+          #remoteVideo{ 
+            width: auto; 
+            border-radius: 8px;
+        }
+        #endCallBtn {
+            margin-top: 10px;
+            z-index: 1001;
+        }
+        #photoinput, .input-group>:not(:first-child):not(.dropdown-menu):not(.valid-tooltip):not(.valid-feedback):not(.invalid-tooltip):not(.invalid-feedback){
+             background: transparent;
+             border: 0;
+             outline: none;
+             box-shadow: none;
+        }
+        .input-group>:not(:first-child):not(.dropdown-menu):not(.valid-tooltip):not(.valid-feedback):not(.invalid-tooltip):not(.invalid-feedback):focus {
+             outline: none;
+             box-shadow: none;
+        }
+        .send-message-btn {
+            position: absolute  !important;
+            right: -1px  !important;
+            border: 0  !important;
+            border-radius: 20px !important;
+        }
+        .send-message-btn:hover {
+            background-color:   #f6b463!important; /* light orange */
+        }
+        .send-message-btn {
+            background-color:#FF8C00  !important; /* Dark orange */
+        }
+        .typing-indicator {
+            background-color: #fff;
+            border-radius: 7px;
+            padding: 8px 12px;
+            display: none;
+            align-items: center;
+            width: fit-content;
+            margin-bottom: 10px;
+            float: left;
+            clear: both;
+            max-width: 80%;
+        }
+
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background-color: #3b3b3b;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 1px;
+            opacity: 0.4;
+        }
+
+        .typing-indicator span:nth-child(1) {
+            animation: blink 1s infinite 0.3333s;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation: blink 1s infinite 0.6666s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation: blink 1s infinite 0.9999s;
+        }
+
+        @keyframes blink {
+            50% {
+                opacity: 1;
+            }
+        }
+
+        .message.you::after {
+            content: '\2713\2713';
+            font-size: 0.8em;
+            margin-left: 5px;
+            color: #999; /* Light gray for unread messages */
+            opacity: 1; /* Make checks always visible */
+        }
+
+        .message.you.read::after {
+            color: #34B7F1; /* Blue for read messages */
+        }
+    </style>
+</head>
+<body>
+    <div id="shareInterface" class="container text-center mt-3">
+        <h2>P2P Chat</h2>
+        <button id="reconnectBtn" class="btn btn-warning btn-sm" style="display: none;">Reconnect</button>
+        
+        <p id="loadingMessage">...</p>
+        <div class="input-group mb-3">
+            <input type="text" id="customPeerId" class="form-control" placeholder="Enter custom ID (optional)">
+            <input type="text" id="sharewordInput" class="form-control" placeholder="Enter shareword to join">
+            <button id="copyLinkBtn" class="btn btn-success btn-round">Copy Chat Link</button>
+        </div>
+        <p id="copyStatus" class="mt-2"></p>
+        <div id="logArea" style="text-align: left; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-top: 20px;">
+            <h5>Debug Log:</h5>
+        </div>
+    </div>
+    <div id="chatInterface" style="display: none; height: 100%;">
+        <div id="videoCallContainer">
+            <div id="videoWrapper">
+                <div id="remoteVideoWrapper">
+                    <video id="remoteVideo" autoplay playsinline></video>
+                </div>
+                <div id="localVideoWrapper">
+                    <video id="localVideo" autoplay muted playsinline></video>
+                </div>
+            </div>
+            <div id="chatArea"></div>
+            <div class="message-input">
+                <div class="input-group">
+                    <input type="text" id="messageInput" class="form-control text-input" placeholder="Type a message">
+                    <button class="btn btn-primary btn-round send-message-btn" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+            <button id="endCallBtn" class="btn btn-danger btn-round">End Call</button>
+        </div>
+    </div>
+    <div id="notificationArea" style="display: none;"></div>
+
+    <script>
+        function log(message) {
+            const logArea = document.getElementById('logArea');
+            const logMessage = document.createElement('p');
+            logMessage.style.margin = '0';
+            logMessage.style.fontSize = '0.8em';
+            logMessage.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
+            logArea.appendChild(logMessage);
+            logArea.scrollTop = logArea.scrollHeight;
+            console.log(message); // Also log to console for desktop debugging
+        }
+
+        let peer;
+        let conn;
+        let chatId;
+        let myPeerId;
+        let isInitiator = false;
+        let localStream;
+        let remoteStream;
+        let mediaConnection;
+        let systemMessageCooldown = false;
+        let customPeerId = '';
+        let typingTimer;
+        const TYPING_TIMER_LENGTH = 3000; // 3 seconds
+
+        // Add the call event listener here, outside of any other function
+      
+        function initializePeer() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const initiatorWord = urlParams.get('i');
+            const receiverWord = urlParams.get('r');
+
+            if (initiatorWord) {
+                customPeerId = initiatorWord;
+                isInitiator = true;
+                document.getElementById('customPeerId').value = initiatorWord;
+            } else if (receiverWord) {
+                isInitiator = false;
+                document.getElementById('sharewordInput').value = receiverWord;
+            }
+
+            peer = customPeerId ? new Peer(customPeerId) : new Peer();
+            
+            peer.on('open', (id) => {
+                myPeerId = id;
+                document.getElementById('myId').textContent = id;
+                
+                log(`Peer opened. My ID: ${id}, Is Initiator: ${isInitiator}`);
+
+                // Delay the connection attempt to ensure PeerJS is fully initialized
+                setTimeout(() => {
+                    if (receiverWord) {
+                        log('Connecting to initiator');
+                        connectToPeer(receiverWord);
+                    } else {
+                        log('New chat as initiator');
+                        document.getElementById('loadingMessage').textContent = 'Ready to chat! Share your link to start.';
+                        document.getElementById('copyLinkBtn').style.display = 'inline-block';
+                        setupCopyLinkButton(id);
+                    }
+                }, 1000); // 1 second delay
+
+                // Replace setInterval with a more battery-friendly approach
+                let lastCheckTime = Date.now();
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        const now = Date.now();
+                        if (now - lastCheckTime > 5000) {
+                            checkConnectionStatus();
+                            lastCheckTime = now;
+                        }
+                    }
+                });
+            });
+
+            peer.on('connection', (connection) => {
+                conn = connection;
+                setupConnection();
+                showChatInterface();
+                
+                if (isInitiator && !chatId) {
+                    chatId = generateChatId();
+                    updateUrlWithChatIdAndPeerId(chatId, myPeerId);
+                    conn.send({ type: 'chatId', chatId: chatId, initiatorId: myPeerId });
+                }
+                
+                log('Your friend has joined the chat!');
+                displayMessage('Your friend has joined the chat!', 'system');
+            });
+            peer.on('call', async (call) => {
+            displayMessage('Incoming video call...', 'system');
+            try {
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('localVideo').srcObject = localStream;
+                call.answer(localStream);
+                setupMediaConnection(call);
+                document.getElementById('videoCallContainer').style.display = 'flex';
+                document.getElementById('startCallBtn').style.display = 'none';
+                document.getElementById('endCallBtn').style.display = 'inline-block';
+                displayMessage('Video call connected', 'system');
+            } catch (err) {
+                console.error('Failed to get local stream', err);
+                displayMessage('Failed to answer video call. Please check your camera and microphone permissions.', 'system');
+                call.close();
+            }
+        });
+
+        }
+
+        function generateRandomId() {
+            return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        }
+
+        function setupCopyLinkButton(id) {
+            const copyLinkBtn = document.getElementById('copyLinkBtn');
+            const copyStatus = document.getElementById('copyStatus');
+            const sharewordInput = document.getElementById('sharewordInput');
+
+            copyLinkBtn.addEventListener('click', () => {
+                const shareWord = sharewordInput.value.trim() || customPeerId || id;
+                const shareLink = `${window.location.origin}${window.location.pathname}?r=${shareWord}`;
+
+                navigator.clipboard.writeText(shareLink).then(() => {
+                    copyStatus.textContent = 'Link copied to clipboard!';
+                    setTimeout(() => {
+                        copyStatus.textContent = '';
+                    }, 3000);
+                }, (err) => {
+                    console.error('Could not copy text: ', err);
+                    copyStatus.textContent = 'Failed to copy link. Please try again.';
+                });
+            });
+        }
+
+        // Initialize peer when the page loads
+        window.addEventListener('load', () => {
+            initializePeer();
+            
+            // Add event listener for shareword input
+            const sharewordInput = document.getElementById('sharewordInput');
+            sharewordInput.addEventListener('change', handleSharewordChange);
+        });
+
+        // Re-initialize peer when custom ID changes
+        document.getElementById('customPeerId').addEventListener('change', () => {
+            if (peer) {
+                peer.destroy();
+            }
+            customPeerId = document.getElementById('customPeerId').value.trim();
+            initializePeer();
+            
+            // Update URL and copy link
+            const newUrl = `${window.location.origin}${window.location.pathname}?i=${customPeerId}`;
+            window.history.pushState({}, '', newUrl);
+            setupCopyLinkButton(customPeerId);
+        });
+
+        // Add this function to create and play sounds
+        function createAndPlaySound(frequency, duration) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.01);
+            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+        }
+
+        // Update the playSound function
+        function playSound(type) {
+            if (type === 'send') {
+                createAndPlaySound(800, 0.1); // Higher pitch for sent messages
+            } else if (type === 'receive') {
+                createAndPlaySound(600, 0.1); // Lower pitch for received messages
+            }
+        }
+
+        function showNotification(message, duration = 3000) {
+            const notificationArea = document.getElementById('notificationArea');
+            notificationArea.textContent = message;
+            notificationArea.style.display = 'block';
+            setTimeout(() => {
+                notificationArea.style.display = 'none';
+            }, duration);
+        }
+
+        function connectToPeer(peerId) {
+            log(`Connecting to peer: ${peerId}`);
+            if (conn) {
+                conn.close();
+            }
+            conn = peer.connect(peerId, { reliable: true });
+            setupConnection();
+            
+            // Enhanced retry mechanism
+            let retryCount = 0;
+            const maxRetries = 100; // Increased number of retries
+            const retryInterval = 1000; // Reduced interval to 3 seconds
+
+            function retryConnection() {
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    log(`Retry attempt ${retryCount}`);
+                    conn = peer.connect(peerId, { reliable: true });
+                    setupConnection();
+                    setTimeout(() => {
+                        if (!conn.open) {
+                            retryConnection();
+                        }
+                    }, retryInterval);
+                } else {
+                    log('Max retries reached. Unable to connect.');
+                    displayMessage('Unable to connect. Please try again later.', 'system');
+                }
+            }
+
+            // Start the retry process if the initial connection fails
+            setTimeout(() => {
+                if (!conn.open) {
+                    retryConnection();
+                }
+            }, retryInterval);
+        }
+
+        function setupConnection() {
+            hideReconnectButton();
+            
+            conn.on('open', () => {
+                log('Connected to peer');
+                displayMessage('Connected to peer', 'system');
+                showChatInterface();
+                // Start video call automatically
+                startVideoCall();
+            });
+            
+            conn.on('data', (data) => {
+                log(`Received data: ${JSON.stringify(data)}`);
+                if (data.type === 'prepareForCall') {
+                    displayMessage('Incoming video call...', 'system');
+                } else if (data.type === 'endCall') {
+                    endVideoCall(false);
+                } else if (data.type === 'typing') {
+                    showTypingIndicator();
+                } else if (data.type === 'stopTyping') {
+                    hideTypingIndicator();
+                } else if (data.type === 'messageReceived') {
+                    markMessageAsReceived(data.id);
+                } else if (data.type === 'messageRead') {
+                    markMessageAsRead(data.id);
+                } else {
+                    displayMessage(data, 'friend');
+                    playSound('receive');
+                    hideTypingIndicator();
+                    if (conn && conn.open) {
+                        conn.send({ type: 'messageRead', id: data.id });
+                    }
+                }
+            });
+
+            conn.on('close', () => {
+                log('Connection closed');
+                displayMessage('Your friend has disconnected', 'system');
+                showReconnectButton();
+            });
+
+            conn.on('error', (err) => {
+                log(`Connection error: ${err.message}`);
+                displayMessage('Connection error: ' + err.message, 'system');
+                showReconnectButton();
+            });
+        }
+
+        let lastMessageId = null;
+
+        function displayMessage(message, className) {
+            const chatArea = document.getElementById('chatArea');
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${className}`;
+            
+            if (typeof message === 'string') {
+                // Handle system messages
+                messageElement.textContent = message;
+                messageElement.classList.add('system');
+                
+                setTimeout(() => {
+                    messageElement.style.opacity = '0';
+                    messageElement.style.transition = 'opacity 1s';
+                    setTimeout(() => {
+                        chatArea.removeChild(messageElement);
+                    }, 1000);
+                }, 20000); // 20 seconds before fading
+            } else if (message.type === 'text') {
+                messageElement.textContent = message.content;
+                messageElement.dataset.messageId = message.id;
+            } else if (message.type === 'image') {
+                const img = document.createElement('img');
+                img.src = message.content;
+                img.style.maxWidth = '100%';
+                img.style.maxHeight = '200px';
+                messageElement.appendChild(img);
+                messageElement.dataset.messageId = message.id;
+            }
+            
+            chatArea.appendChild(messageElement);
+            chatArea.scrollTop = chatArea.scrollHeight;
+
+            if (className === 'friend') {
+                lastMessageId = message.id;
+                if (conn && conn.open) {
+                    conn.send({ type: 'messageReceived', id: message.id });
+                }
+            }
+        }
+
+        function showChatInterface() {
+            document.getElementById('chatInterface').style.display = 'flex';
+            document.getElementById('chatInterface').style.flexDirection = 'column';
+            document.getElementById('shareInterface').style.display = 'none';
+        }
+
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        function checkConnectionStatus() {
+            log('Checking connection status');
+            if (conn) {
+                log(`Connection state: ${conn.open ? 'open' : 'closed'}`);
+            } else {
+                log('No connection established');
+            }
+            
+            if (conn && !conn.open) {
+                log('Connection lost');
+                displayMessage('Connection lost. Attempting to reconnect...', 'system');
+                if (chatId) {
+                    connectToPeer(conn.peer);
+                }
+            }
+        }
+
+        function showReconnectButton() {
+            document.getElementById('reconnectBtn').style.display = 'inline-block';
+        }
+
+        function hideReconnectButton() {
+            document.getElementById('reconnectBtn').style.display = 'none';
+        }
+
+        document.getElementById('reconnectBtn').addEventListener('click', () => {
+            if (conn && conn.peer) {
+                connectToPeer(conn.peer);
+            }
+        });
+
+        // Add this function to handle file selection
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const imageData = e.target.result;
+                    if (conn && conn.open) {
+                        conn.send({ type: 'image', content: imageData });
+                        displayMessage({ type: 'image', content: imageData }, 'you');
+                        playSound('send');
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Add event listener for file input
+        document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+
+        // Add this function to start a video call
+        async function startVideoCall() {
+            try {
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('localVideo').srcObject = localStream;
+                document.getElementById('videoCallContainer').style.display = 'flex';
+                document.getElementById('startCallBtn').style.display = 'none';
+                document.getElementById('endCallBtn').style.display = 'inline-block';
+
+                if (conn && conn.open) {
+                    mediaConnection = peer.call(conn.peer, localStream);
+                    setupMediaConnection(mediaConnection);
+                    conn.send({ type: 'prepareForCall' });
+                }
+                displayMessage('Video call started', 'system');
+            } catch (err) {
+                console.error('Failed to start video call:', err);
+                displayMessage('Failed to start video call. Please check your camera and microphone permissions.', 'system');
+            }
+        }
+
+        // Add this function to end a video call
+        function endVideoCall(isInitiator = true) {
+            console.log('Ending video call');
+            
+            // Stop all tracks in the local stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                localStream = null;
+            }
+
+            // Stop all tracks in the remote stream
+            if (remoteStream) {
+                remoteStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                remoteStream = null;
+            }
+
+            // Close the media connection
+            if (mediaConnection) {
+                mediaConnection.close();
+                mediaConnection = null;
+            }
+
+            // Clear video elements
+            const localVideo = document.getElementById('localVideo');
+            const remoteVideo = document.getElementById('remoteVideo');
+            if (localVideo.srcObject) {
+                const tracks = localVideo.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                localVideo.srcObject = null;
+            }
+            if (remoteVideo.srcObject) {
+                const tracks = remoteVideo.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                remoteVideo.srcObject = null;
+            }
+
+            // Hide video call container and show start call button
+            document.getElementById('videoCallContainer').style.display = 'none';
+            document.getElementById('startCallBtn').style.display = 'inline-block';
+
+            if (isInitiator && conn) {
+                conn.send({ type: 'endCall' });
+            }
+            
+            displayMessage(isInitiator ? 'You ended the video call' : 'Your friend ended the video call', 'system');
+        }
+
+        // Add this function to set up the media connection
+        function setupMediaConnection(call) {
+            mediaConnection = call;
+
+            call.on('stream', (stream) => {
+                console.log('Received remote stream');
+                remoteStream = stream;
+                const remoteVideo = document.getElementById('remoteVideo');
+                remoteVideo.srcObject = remoteStream;
+                remoteVideo.play().catch(e => console.error('Error playing remote video:', e));
+                
+                document.getElementById('videoCallContainer').style.display = 'flex';
+                document.getElementById('startCallBtn').style.display = 'none';
+            });
+
+            call.on('close', () => {
+                console.log('Call closed');
+                endVideoCall(false);
+            });
+
+            call.on('error', (err) => {
+                console.error('Call error:', err);
+                displayMessage('An error occurred during the call. Please try again.', 'system');
+                endVideoCall(false);
+            });
+        }
+
+        // Add event listeners for video call buttons
+        document.getElementById('startCallBtn').addEventListener('click', startVideoCall);
+        document.getElementById('endCallBtn').addEventListener('click', () => endVideoCall(true));
+
+        async function requestMediaPermissions() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                return true;
+            } catch (err) {
+                console.error('Failed to get media permissions:', err);
+                showNotification('Please grant camera and microphone permissions for video calls.', 5000);
+                return false;
+            }
+        }
+
+        // Add this function to handle shareword input changes
+        function handleSharewordChange() {
+            const sharewordInput = document.getElementById('sharewordInput');
+            const shareword = sharewordInput.value.trim();
+            
+            if (shareword) {
+                const newUrl = `${window.location.origin}${window.location.pathname}?r=${shareword}`;
+                window.history.pushState({}, '', newUrl);
+                setupCopyLinkButton(shareword);
+                
+                // Attempt to connect using the shareword
+                connectToPeer(shareword);
+            }
+        }
+
+        // Add these new functions
+        function showIncomingCallUI(call) {
+            const answerBtn = document.createElement('button');
+            answerBtn.textContent = 'Answer Call';
+            answerBtn.className = 'btn btn-success';
+            answerBtn.onclick = async () => {
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    document.getElementById('localVideo').srcObject = localStream;
+                    call.answer(localStream);
+                    setupMediaConnection(call);
+                    document.getElementById('videoCallContainer').style.display = 'flex';
+                    document.getElementById('startCallBtn').style.display = 'none';
+                    document.getElementById('endCallBtn').style.display = 'inline-block';
+                    removeIncomingCallUI();
+                } catch (err) {
+                    console.error('Failed to get local stream', err);
+                    displayMessage('Failed to access camera and microphone. Please check your permissions.', 'system');
+                    call.close();
+                }
+            };
+
+            const rejectBtn = document.createElement('button');
+            rejectBtn.textContent = 'Reject Call';
+            rejectBtn.className = 'btn btn-danger';
+            rejectBtn.onclick = () => rejectCall(call);
+
+            const callUI = document.createElement('div');
+            callUI.id = 'incomingCallUI';
+            callUI.style.position = 'fixed';
+            callUI.style.top = '50%';
+            callUI.style.left = '50%';
+            callUI.style.transform = 'translate(-50%, -50%)';
+            callUI.style.backgroundColor = 'white';
+            callUI.style.padding = '20px';
+            callUI.style.borderRadius = '10px';
+            callUI.style.boxShadow = '0 0 10px rgba(0,0,0,0.5)';
+            callUI.style.zIndex = '1000';
+            callUI.appendChild(answerBtn);
+            callUI.appendChild(rejectBtn);
+
+            document.body.appendChild(callUI);
+        }
+
+        function rejectCall(call) {
+            call.close();
+            removeIncomingCallUI();
+            displayMessage('Video call rejected', 'system');
+        }
+
+        function removeIncomingCallUI() {
+            const callUI = document.getElementById('incomingCallUI');
+            if (callUI) {
+                callUI.remove();
+            }
+        }
+
+        function showTypingIndicator() {
+            const typingIndicator = document.querySelector('.typing-indicator');
+            typingIndicator.style.display = 'flex';
+            document.getElementById('chatArea').appendChild(typingIndicator);
+            document.getElementById('chatArea').scrollTop = document.getElementById('chatArea').scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            document.querySelector('.typing-indicator').style.display = 'none';
+        }
+
+        function sendTypingStatus(isTyping) {
+            if (conn && conn.open) {
+                conn.send({ type: isTyping ? 'typing' : 'stopTyping' });
+            }
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            if (message && conn && conn.open) {
+                const messageId = Date.now().toString();
+                conn.send({ type: 'text', content: message, id: messageId });
+                displayMessage({ type: 'text', content: message, id: messageId }, 'you');
+                messageInput.value = '';
+                playSound('send');
+                sendTypingStatus(false);
+                clearTimeout(typingTimer);
+            }
+        }
+
+        function markMessageAsReceived(messageId) {
+            const messageElement = document.querySelector(`.message[data-message-id="${messageId}"]`);
+            if (messageElement) {
+                messageElement.classList.add('received');
+            }
+        }
+
+        function markMessageAsRead(messageId) {
+            const messageElement = document.querySelector(`.message[data-message-id="${messageId}"]`);
+            if (messageElement) {
+                messageElement.classList.add('read');
+            }
+        }
+
+        // Add this function to send read receipts
+        function sendReadReceipt() {
+            if (lastMessageId && conn && conn.open) {
+                conn.send({ type: 'messageRead', id: lastMessageId });
+                lastMessageId = null;
+            }
+        }
+
+        // Add this event listener to send read receipts when the user interacts with the chat
+        document.getElementById('chatArea').addEventListener('click', sendReadReceipt);
+        document.getElementById('messageInput').addEventListener('focus', sendReadReceipt);
+
+        document.getElementById('messageInput').addEventListener('input', function() {
+            sendTypingStatus(true);
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(() => sendTypingStatus(false), TYPING_TIMER_LENGTH);
+        });
+    </script>
+ 
+</body>
+</html>
